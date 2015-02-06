@@ -2,72 +2,15 @@
 Sales Order Engine
 -----------------------------------------------------------------------------------
 Written by: Joshua Bruce  
-Checked into Source Control 12/16 by Joshua Bruce  
-This script is property of House of Antique Hardware  
 
 NetSuite Information
 -----------------------------------------------------------------------------------
-Script Record:    __Sales Order Engine__  
-Script Record ID: __customscript_salesorder_engine__  
-Type:             __User Event__  
-
-Deployments:      __Sales Order__  
-Deployment ID:    __customdeploy_dosalesorder__  
 Libraries:        __scriptTiming.js__  
 
 Version History
 -----------------------------------------------------------------------------------
-+ Version 1.02.00 - Adds new "Place Back on Manual Hold" button
-+ Version 1.01.10 - Undid the changes in 1.01.07
-+ Version 1.01.09 - Added MM & JB default roles to managers list
-+ Version 1.01.08 - Fixes issue where weekends were not being checked in ETA dates
-+ Version 1.01.07 - Fixes issue with custom pricing being counted as trade price
-+ Version 1.01.06 - Orders with special orders will not try to go back to pending approval & issue with missing approval button fixed
-+ Version 1.01.05 - Addresses issue where sometimes a manual change for email results would not take.
-+ Version 1.01.04 - Always be killing bugs.  Negative email dispositions not sending.
-+ Version 1.01.03 - Addresses issue with emails not having data when being sent.
-+ Version 1.01.02 - Calculate ETA is now made aware of order status (and thus item allocation) and email templates properly place in eta information
-+ Version 1.01.01 - Orders with special orders no longer auto approve
-+ Version 1.01.00 - Checking the manual backorder checkbox prevents automated ETA calculation
-+ Version 1.00.08 - Fixed issue in .07 with trying to revert to pending approval and re-added lead time to Vendor ETA
-+ Version 1.00.07 - CVV check is now done after submit and drop ship calculation will only look at line items
-+ Version 1.00.06 - Addresses issue with email templates
-+ Version 1.00.05 - Addresses credit card issues & non-inventory item types
-+ Version 1.00.04 - Go-live version for 12/10 - fixed issue with override buttons
-+ Version 1.00.03 - Go-live version for 12/10 - international back orders will now be sent auto emails
-+ Version 1.00.02 - Go-live version for 12/10 - bunch of bug fixes
-+ Version 1.00.01 - Go-live version for 12/10 - orders without back ordered items will not set/clear ETA Comments/Date
-+ Version 1.00.00 - Go-live version for 12/10
-+ Version 0.99.00 - Intrastate Drop Shipment on hold reason added
-+ Version 0.98.00 - Release candidate 8 - Fixed issue with manager overrides.  For reals.  Squashed email template bug, orders over $500 w/ bo show possible DS
-+ Version 0.97.00 - Release candidate 7 - Restricted roles that cannot edit sales orders from override buttons
-+ Version 0.96.00 - Release candidate 6 - Update trade pricing to look at line item price level
-+ Version 0.95.00 - Release candidate 5 - Adjustments to VAT hold based on future web display of terms
-+ Version 0.94.20 - Fixes to the open PO eta calculation
-+ Version 0.94.10 - Fixes to the PO Box pattern
-+ Version 0.94.00 - Release candidate 4 - Added HOAH ETA update for orders that push an item out to a new restocking date, fixed issue with CW & SI items
-+ Version 0.93.00 - Release candidate 3 - Added 60 day exception for emailing customers
-+ Version 0.92.01 - Release candidate 2 - Fixed issue with FOB calculation
-+ Version 0.92.00 - Release candidate 2 - Added checks or on account form check
-+ Version 0.91.00 - Release candidate 2
-+ Version 0.90.00 - Release candidate 1
-+ Version 0.80.00 - Added stop watch functionality
-+ Version 0.70.00 - Added auto email procedure (Phase 2)
-+ Version 0.60.00 - Added ETA calculation (Phase 1)
-+ Version 0.53.00 - Added multiple override buttons
-+ Version 0.52.00 - Added Override Hold Button Functionality
-+ Version 0.51.00 - Sales Order Phase 3 branch begins
-+ Version 0.50.00 - Pre Process function complete, merge with default
-+ Version 0.00.05 - Starting on Phase 3
-+ Version 0.00.04 - Trying to catch up to Phase 2
-+ Version 0.00.03 - Trying to catch up to Phase 2
-+ Version 0.00.02 - Work continues on the script skeleton
-+ Version 0.00.01 - Initial layout & check in to VCS
 */
 
-/*
-	The engine starts here...
-*/
 
 /* 	================================================================== DEBUG SWITCH 
 	Setting this to true will output DEBUG statements into the script execution log
@@ -99,12 +42,12 @@ var PENDING_APPROVAL 	    = 'A';
 var PENDING_FULFILLMENT	    = 'B';
 var PARTIALLY_FULFILLED	    = 'D';
 var PEND_BILL_PART_FILLED	= 'E';
-var PENDING_STATUES = [PENDING_APPROVAL,PENDING_FULFILLMENT,PARTIALLY_FULFILLED,PEND_BILL_PART_FILLED];
+var PENDING_STATUSES = [PENDING_APPROVAL,PENDING_FULFILLMENT,PARTIALLY_FULFILLED,PEND_BILL_PART_FILLED];
 
 
 /* Custom Forms */
-var CF_CHECKSONACCOUNT 	= '102';
-var CF_WWWORIGIN_PAID   = '106';
+var CF_CHECKSONACCOUNT 	= '';
+var CF_WWWORIGIN_PAID   = '';
 
 /* Payment Methods */
 var PM_CHECK 	= '2';
@@ -133,6 +76,7 @@ var HR_OVER_THRESHOLD 	 	= '11';
 var HR_VAT_APPROVAL			= '3';
 var HR_PO_BOX 				= '4';
 var HR_CVV_CHECK_FAILED 	= '2';
+var HR_CREDIT_CARD			= '2';
 var HR_ANTIQUE_ITEM			= '12';
 var HR_SALES_NOTES 			= '13';
 var HR_CUSTOMER_COMMENTS	= '7';
@@ -156,6 +100,7 @@ var ITEMTYPE_OVERSTOCK	= '7';
 var ITEM_INVENTORY = 'inventoryitem';
 var ITEM_KIT	   = 'kititem';
 var ITEM_ASSEMBLY  = 'assemblyitem';
+var ITEM_DISCOUNT  = 'discountitem';
 var STOCKED_ITEMTYPES = [ITEM_INVENTORY,ITEM_KIT,ITEM_ASSEMBLY];
 
 /* FOB Points */
@@ -165,10 +110,10 @@ var FOB_SPECIALORDER 	= '3';
 var FOB_STOCKDROP 		= '4';
 
 /* Email Templates */
-var ET_DROPSHIP_TEMPLATE	= 154;
-var ET_SPLIT_TEMPLATE		= 153;
-var ET_MULTIPLE_TEMPLATE	= 40;
-var ET_SINGLE_TEMPLATE		= 55;
+var ET_DROPSHIP_TEMPLATE	= 260;
+var ET_SPLIT_TEMPLATE		= 259;
+var ET_MULTIPLE_TEMPLATE	= 258;
+var ET_SINGLE_TEMPLATE		= 257;
 
 /* Email Results */
 var ER_EMAIL_SENT			= 1;
@@ -381,20 +326,25 @@ function hasAgreedtoVATTerms() {
 
 function hasRejectedCard() {
 	if (this.payholdreason == 'External Fraud Rejection' || this.payholdreason == 'External Fraud Review') return true;
-	if (this.avsstreetmatch == 'N' && this.avszipmatch == 'N') return true;
+	if ((this.avsstreetmatch == 'N' && this.avszipmatch == 'N') || (this.avsstreetmatch == 'X' && this.avszipmatch == 'X')) return true;
 	return false;
 }
 
 function doFOBPoint() {
 	if (this.has_specialorder) {
+		this.fob_point = FOB_SPECIALORDER;
 		return FOB_SPECIALORDER;
 	} else if (this.has_dropship && this.has_stock) {
+		this.fob_point = FOB_STOCKDROP;
 		return FOB_STOCKDROP;
 	} else if (this.has_dropship) {
+		this.fob_point = FOB_DROPSHIP;
 		return FOB_DROPSHIP;
 	} else {
+		this.fob_point = FOB_STOCK;
 		return FOB_STOCK;
 	}
+		this.fob_point = FOB_STOCK;
 	return FOB_STOCK;
 }
 
@@ -410,6 +360,11 @@ function hasPossibleDropShip() {
 
 function hasDropShip() {
 	if (this.has_dropship) return true;
+	return false;
+}
+
+function hasSpecialOrder() {
+	if (this.has_specialorder) return true;
 	return false;
 }
 
@@ -446,6 +401,10 @@ function doDropShipLines() {
 	return this.list_dropship.join();
 }
 
+function doSpecialOrderLines() {
+	return this.list_specialorder.join();
+}
+
 function doKitAssemblyLines() {
 	return this.list_kits_or_assemblies.join();
 }
@@ -479,6 +438,15 @@ function hasIntrastateDropShip() {
 	return false;
 }
 
+function hasManualBackOrder() {
+	return this.has_manual_bo;
+}
+
+function isOnPaymentHold() {
+	if (this.payresult == 'Payment Hold') return true;
+	return false;
+}
+
 function doAutoApproval() {
 	//if (DEBUG) nlapiLogExecution('DEBUG','ASSERT doAutoApproval','Has DS: '+ this.has_dropship +', Has PDS:'+ this.has_possible_dropship+', Has KA:'+ this.has_kits_or_assemblies+', Order staus:'+this.orderstatus);
 	if (this.has_dropship) return false;
@@ -489,7 +457,13 @@ function doAutoApproval() {
 	return true;
 }
 
+function orderObject() {
+	return this.order;
+}
 
+function orderId() {
+	return this.order_id;
+}
 
 
 
@@ -519,6 +493,7 @@ function loadComplexData() {
 	this.has_non_base_price = false;
 	this.list_backorder = [];
 	this.list_dropship = [];
+	this.list_specialorder = [];
 	this.list_kits_or_assemblies = [];
 	this.list_abh_items = [];
 
@@ -539,7 +514,9 @@ function loadComplexData() {
 		var qty 		= this.order.getLineItemValue('item','quantity',line);
 		var committed 	= this.order.getLineItemValue('item','quantitycommitted',line);
 		if (committed == '') committed = 0;
-		var qty_needed  = qty-committed;
+		var fulfilled 	= this.order.getLineItemValue('item','quantityfulfilled',line);
+		if (fulfilled == '') fulfilled = 0;
+		var qty_needed  = qty-committed-fulfilled;
 
 		var itemfields = [];
 		itemfields.push('recordtype');
@@ -571,7 +548,7 @@ function loadComplexData() {
 		if (!isEmpty(itemnotes))
 			this.has_sales_notes = true;
 
-		if (!isBasePrice(pricelevel))
+		if (!isBasePrice(pricelevel) && itemtype !== ITEM_DISCOUNT)
 			this.has_non_base_price = true;
 
 		/* Ignore Antique, Sale Items */
@@ -585,15 +562,18 @@ function loadComplexData() {
 					if (dsstates) this.ds_states.push(dsstates);
 				} else {
 					this.has_specialorder = true;
+					this.list_specialorder.push(line);
 				}
 			/*} else if (stocktype === ITEMTYPE_DS) {
 				this.has_dropship = true;
 				this.list_dropship.push(line);*/
 			} else if (isABH(itemnumber) && itemtype === 'assemblyitem') {
 				this.has_abh_items = true;
+				this.has_stock = true;
 				this.list_abh_items.push(line);
 			} else if (itemtype === 'assemblyitem' || itemtype === 'kititem') {
 				this.has_kits_or_assemblies = true;
+				this.has_stock = true;
 				this.list_kits_or_assemblies.push(line);
 			} else if (qty_needed-qtyavail > 0) {
 				this.has_backorder = true;
@@ -606,7 +586,7 @@ function loadComplexData() {
 				this.stockedtotal += lineamount;
 			}
 		} else {
-			this.stockedtotal += lineamount;
+			if (itemtype !== ITEM_DISCOUNT) this.stockedtotal += lineamount;
 		}
 
 		if (stocktype === ITEMTYPE_SALE && qty_needed-qtyavail > 0) {
@@ -638,6 +618,7 @@ function SalesOrder(ns_OrderObject) {
 	this.order 		= ns_OrderObject;
 	this.orderstatus = ns_OrderObject.getFieldValue('orderstatus');
 	if (this.orderstatus == null) this.orderstatus = PENDING_APPROVAL;
+	this.order_id   = ns_OrderObject.getId();
 
 	/* On-hold properties */
 	this.onhold 	= ns_OrderObject.getFieldValue('custbody_on_hold');
@@ -656,12 +637,14 @@ function SalesOrder(ns_OrderObject) {
 	var shippingaddress	= ns_OrderObject.getFieldValue('shipaddress');
 	this.address 	= shippingaddress ? fixAddress(shippingaddress) : ''; 
 	this.paymethod 	= ns_OrderObject.getFieldValue('paymentmethod');
+	this.payresult  = ns_OrderObject.getFieldText('paymenteventresult');
 	this.storefront = ns_OrderObject.getFieldValue('custbody_storefront');
 	this.promocode 	= ns_OrderObject.getFieldValue('promocode');
 	this.customer 	= ns_OrderObject.getFieldValue('entity');
 	this.shipmethod = ns_OrderObject.getFieldValue('shipmethod');
 	this.billcountry = ns_OrderObject.getFieldValue('billcountry');
 	this.shipcountry = ns_OrderObject.getFieldValue('shipcountry');
+	if (!this.shipcountry) this.shipcountry = this.billcountry;
 	this.shipstate = ns_OrderObject.getFieldValue('shipstate');
 	this.ordersource = ns_OrderObject.getFieldValue('source');
 	this.payholdreason = ns_OrderObject.getFieldText('paymenteventholdreason');
@@ -669,6 +652,7 @@ function SalesOrder(ns_OrderObject) {
 	this.avszipmatch = ns_OrderObject.getFieldValue('ccavszipmatch');
 	this.vattermsagreed = ns_OrderObject.getFieldValue('custbody_vat_terms_agreed');
 	this.permanentvataccept = ns_OrderObject.getFieldValue('custbody_intl_approval');
+	this.fob_point = ns_OrderObject.getFieldValue('custbody_fob_point');
 
 	/* Auto-Email properties */
 	this.emailresult = ns_OrderObject.getFieldValue('custbody_email_result');
@@ -683,6 +667,10 @@ function SalesOrder(ns_OrderObject) {
 	this.drop_ship_lines = ns_OrderObject.getFieldValue('custbody_dropship_lines');
 	if (this.drop_ship_lines) this.list_dropship = this.drop_ship_lines.split(",");
 
+	this.list_specialorder = [];
+	this.specialorder_lines = ns_OrderObject.getFieldValue('custbody_specialorder_lines');
+	if (this.specialorder_lines) this.list_specialorder = this.specialorder_lines.split(",");
+
 	this.list_kits_or_assemblies = [];
 	this.kit_assembly_lines = ns_OrderObject.getFieldValue('custbody_kit_assembly_lines');
 	if (this.kit_assembly_lines) this.list_kits_or_assemblies = this.kit_assembly_lines.split(",");
@@ -695,6 +683,7 @@ function SalesOrder(ns_OrderObject) {
 	this.has_backorder = ns_OrderObject.getFieldValue('custbody_is_backorder') == 'T' ? true : false;
 	this.has_possible_dropship = ns_OrderObject.getFieldValue('custbody_possible_dropship') == 'T' ? true : false;
 	this.has_dropship = ns_OrderObject.getFieldValue('custbody_has_dropship') == 'T' ? true : false;
+	this.has_specialorder = ns_OrderObject.getFieldValue('custbody_has_specialorder') == 'T' ? true : false;
 	this.has_kits_or_assemblies = ns_OrderObject.getFieldValue('custbody_has_kits_or_assemblies') == 'T' ? true : false;
 	this.has_abh_items = ns_OrderObject.getFieldValue('custbody_has_abh') == 'T' ? true : false;
 
@@ -730,6 +719,8 @@ function SalesOrder(ns_OrderObject) {
 	this.hasPossibleDropShip = hasPossibleDropShip;
 	this.hasDropShip = hasDropShip;
 	this.DropShipLines = doDropShipLines;
+	this.hasSpecialOrder = hasSpecialOrder;
+	this.SpecialOrderLines = doSpecialOrderLines;
 	this.hasKitsOrAssemblies = hasKitsOrAssemblies;
 	this.KitAssemblyLines = doKitAssemblyLines;
 	this.hasABH = hasABH;
@@ -740,11 +731,15 @@ function SalesOrder(ns_OrderObject) {
 	this.hasIntrastateDropShip = hasIntrastateDropShip;
 	this.isAmazon = isAmazon;
 	this.isPayPal = isPayPal;
+	this.hasManualBackOrder = hasManualBackOrder;
+	this.isOnPaymentHold = isOnPaymentHold;
 
 	this.hasOverride = hasOverride;
 	this.hasSentEmail = hasSentEmail;
 
 	this.isAutoApproved = doAutoApproval;
+	this.orderObject = orderObject;
+	this.orderId = orderId;
 
 	this.loadComplexData = loadComplexData;
 }
@@ -830,15 +825,12 @@ function preProcessOrder(type) {
 	if (order.isOverThreshold(TOTALTHRESHOLD) && !order.hasOverride(HR_OVER_THRESHOLD))
 		OnHold_Reasons.push(HR_OVER_THRESHOLD);
 
-	if (order.isInternational() && !order.hasAgreedtoVATTerms() && !order.hasOverride(HR_VAT_APPROVAL))
+	if (order.isInternational() && !order.isZeroDollar() && !order.hasAgreedtoVATTerms() && !order.hasOverride(HR_VAT_APPROVAL))
 		OnHold_Reasons.push(HR_VAT_APPROVAL);
 
 	/* Added CVV Check to After Submit 12/10 - CVV information isn't generated before submit for web orders */
 	/* if (order.didCVVFail() && order.customform !== CF_WWWORIGIN_PAID && !order.isAmazon() && !order.isPayPal() && !order.hasOverride(HR_CVV_CHECK_FAILED))
 		OnHold_Reasons.push(HR_CVV_CHECK_FAILED); */
-
-	if (order.hasRejectedCard() && !order.isAmazon() && !order.isPayPal() && !order.hasOverride(HR_FRAUD_CUSTOMER))
-		OnHold_Reasons.push(HR_FRAUD_CUSTOMER)
 
 	if (order.hasComments() && !order.hasOverride(HR_CUSTOMER_COMMENTS))
 		OnHold_Reasons.push(HR_CUSTOMER_COMMENTS);
@@ -865,7 +857,6 @@ function preProcessOrder(type) {
 		OnHold_Reasons.push(HR_ANTIQUE_ITEM);
 
 
-
 	if (OnHold_Reasons.length > 0) {
 		nlapiSetFieldValue('custbody_on_hold','T');
 		nlapiSetFieldValues('custbody_onholdreason',OnHold_Reasons);
@@ -885,6 +876,10 @@ function preProcessOrder(type) {
 	nlapiSetFieldValue('custbody_has_dropship',hasDropShip);
 	nlapiSetFieldValue('custbody_dropship_lines',order.DropShipLines());
 
+	var hasSpecialOrder = order.hasSpecialOrder() ? 'T' : 'F';
+	nlapiSetFieldValue('custbody_has_specialorder',hasSpecialOrder);
+	nlapiSetFieldValue('custbody_specialorder_lines',order.SpecialOrderLines());
+
 	var hasKitsOrAssemblies = order.hasKitsOrAssemblies() ? 'T' : 'F';
 	nlapiSetFieldValue('custbody_has_kits_or_assemblies',hasKitsOrAssemblies);
 	nlapiSetFieldValue('custbody_kit_assembly_lines',order.KitAssemblyLines());
@@ -898,7 +893,7 @@ function preProcessOrder(type) {
 	if (OnHold_Reasons.length === 0 && order.isAutoApproved()) {
 		nlapiSetFieldValue('custbody_auto_approve', 'T');
 		nlapiSetFieldValue('orderstatus', PENDING_FULFILLMENT);
-	} else if (OnHold_Reasons.length !== 0 && order.orderstatus === PENDING_FULFILLMENT && !order.hasDropShip() && !order.has_specialorder) {
+	} else if (OnHold_Reasons.length !== 0 && order.orderstatus === PENDING_FULFILLMENT && !order.hasDropShip() && !order.hasSpecialOrder()) {
 		nlapiSetFieldValue('custbody_auto_approve', 'F');
 		nlapiSetFieldValue('orderstatus', PENDING_APPROVAL);
 	}
@@ -942,15 +937,19 @@ function postProcessOrder(type) {
 	/* Added CVV Check to After Submit 12/10 - CVV information isn't generated before submit for web orders */
 	var OnHold_Reasons = [];
 	if (order.ohreasons.length > 0) OnHold_Reasons = OnHold_Reasons.concat(order.ohreasons);	
-	if (order.didCVVFail() && order.customform !== CF_WWWORIGIN_PAID && !order.isAmazon() && !order.isPayPal() && !order.hasOverride(HR_CVV_CHECK_FAILED)) 
-		OnHold_Reasons.push(HR_CVV_CHECK_FAILED);
+	if (order.isOnPaymentHold() && order.customform !== CF_WWWORIGIN_PAID && !order.isAmazon() && !order.isPayPal() && !order.hasOverride(HR_CREDIT_CARD))
+		OnHold_Reasons.push(HR_CREDIT_CARD);
+	if (order.didCVVFail() && order.customform !== CF_WWWORIGIN_PAID && !order.isAmazon() && !order.isPayPal() && !order.hasOverride(HR_CREDIT_CARD)) 
+		OnHold_Reasons.push(HR_CREDIT_CARD);
+	if (order.hasRejectedCard() && order.customform !== CF_WWWORIGIN_PAID && !order.isAmazon() && !order.isPayPal() && !order.hasOverride(HR_FRAUD_CUSTOMER))
+		OnHold_Reasons.push(HR_FRAUD_CUSTOMER)
 
 	if (OnHold_Reasons.length > 0) {
 		SO_Fields.push('custbody_on_hold');
 		SO_Values.push('T');
 		SO_Fields.push('custbody_onholdreason');
 		SO_Values.push(OnHold_Reasons);
-		if (order.orderstatus === PENDING_FULFILLMENT && !order.hasDropShip()) {
+		if (order.orderstatus === PENDING_FULFILLMENT && !order.hasDropShip() && !order.hasSpecialOrder()) {
 			SO_Fields.push('custbody_auto_approve');
 			SO_Values.push('F');
 			SO_Fields.push('orderstatus');
@@ -966,8 +965,7 @@ function postProcessOrder(type) {
 	var runningETADate = '';
 	var etadate = '';
 
-	// Kits or DS orders will not be calculated (right now)
-	if (!order.hasKitsOrAssemblies() && !order.hasDropShip() && !order.has_manual_bo) {
+	if (!order.hasManualBackOrder()) {
 		for (var b=0;b<BackOrder_List.length;b++) {
 			var linenumber  = BackOrder_List[b];
 			var itemnum 	= nlapiGetLineItemValue('item','item',linenumber);
@@ -1012,7 +1010,6 @@ function postProcessOrder(type) {
 		SO_Fields.push('custbody_eta_date');
 		SO_Values.push(etadate);
 	}
-
 
 	if (DEBUG) nlapiLogExecution('AUDIT', logSubject, logMessage);
 	if (SO_Fields.length > 0) nlapiSubmitField(nlapiGetRecordType(),nlapiGetRecordId(), SO_Fields, SO_Values);
@@ -1334,34 +1331,30 @@ function getNextPOETA(vendorid,leadtime,interval){
 */
 function doBackOrderEmail(customer,template,recordid,eta,comments) {
 
-	var replacements = new Object();
-
 	try {
-		var fields 		= ['firstname','companyname','email'];
-		var custFields 	= nlapiLookupField('customer',customer,fields);
-		if (!custFields.firstname) {
-			var custName = custFields.companyname;
-			custName = custName.toLowerCase().replace(/\b[a-z]/g, function(letter) { return letter.toUpperCase(); });
-			replacements['NLFIRSTNAME'] = '';
-			replacements['NLCOMPANYNAME'] = custName;
-		} else {
-			var custName = custFields.firstname;
-			custName = custName.toLowerCase().replace(/\b[a-z]/g, function(letter) { return letter.toUpperCase(); });
-			replacements['NLFIRSTNAME'] = custName;
-			replacements['NLCOMPANYNAME'] = '';
-		}
+        var cust_email = nlapiLookupField('customer',customer,'email');
+		var emailtemp  = nlapiLoadRecord('emailtemplate',template);
+		var body       = emailtemp.getFieldValue('content');
+		var subject    = emailtemp.getFieldValue('subject');
 
-		var emailBodyFile		= nlapiMergeRecord(template,'salesorder',recordid,null,null,replacements);
+		var so_record  = nlapiLoadRecord('salesorder',recordid);
+
+		var renderer = nlapiCreateTemplateRenderer();
+		renderer.addRecord('transaction',so_record);
+		renderer.setTemplate(subject);
+		var emailSubject = renderer.renderToString();
+		renderer.setTemplate(body);
+		var emailBodyText = renderer.renderToString();
+
 		var records				= new Object();
 		records['transaction'] 	= recordid;
 
 		var emailFrom 			= '2753807'; //Orders@ HOAH.com email address
 		var JOSHUABRUCE			= '1852071'; //employee internal id for debugging
-
-
 		if (CONTEXT.environment !== 'PRODUCTION') emailFrom = JOSHUABRUCE;
-		if (custFields.email) {
-			nlapiSendEmail(emailFrom,customer,emailBodyFile.getName(),emailBodyFile.getValue(),null,null,records,null,true,false);
+
+		if (cust_email) {
+			nlapiSendEmail(emailFrom,customer,emailSubject,emailBodyText,null,null,records,null,true,false);
 			return true;
 		} else {
 			logMessage += 'Customer doesn\'t have an email address.\n<br>';
@@ -1408,10 +1401,14 @@ function showOverrideButtons(type,form) {
 	}
 
 	var orderstatus = nlapiGetFieldValue('orderstatus');
-	if (PENDING_STATUES.indexOf(orderstatus) == -1) {
+	if (PENDING_STATUSES.indexOf(orderstatus) == -1) {
 		if (DEBUG) stopwatch.end();
 		return true;
 	}
+
+	/* Version 1.1 - orders can no longer be closed */
+	form.removeButton('closeremaining');
+	//nlapiSetFieldValue("custbody_custom_html", getHideButtonsScript(onhold), false);
 
 	var onhold = nlapiGetFieldValue('custbody_on_hold');
 	var hold_overrides = nlapiGetFieldValues('custbody_override_hold_reasons');
@@ -1437,8 +1434,9 @@ function showOverrideButtons(type,form) {
 			}
 		}
 
-		nlapiSetFieldValue("custbody_custom_html", getHideButtonsScript(), false);
+		/* Version 1.1 - orders on hold can no longer be fulfilled */
 		form.removeButton('approve');
+		form.removeButton('process');
 	}
 
 	if (manual_override > -1) {
@@ -1489,6 +1487,8 @@ function isABH(itemName) {
 	#isAger(itemName)
 
 	Checks to see if the item is ager by searching for '-AGER' in the item name.
+	Version 1.6.02 adds a check if the item name is R-08KN-M-3Q which doesn't follow the
+	same naming convention.
 
 	__Parameters__  
 	+ _itemName_ {string} [required] - The item name to be checked. 
@@ -1497,6 +1497,7 @@ function isABH(itemName) {
 	+ _true_ or _false_ if is an ABH item or not.  
 */
 function isAger(itemName) {
+	if (itemName === 'R-08KN-M-3Q') return true;
 	return itemName.search('-AGER') > 0 ? true : false;
 }
 
@@ -1650,23 +1651,54 @@ function getAvailableQty(itemNum) {
 
 
 
-function getHideButtonsScript() {
+function getHideButtonsScript(onhold) {
 	var script = "";
 	script += "<script type=\"text/javascript\">";
-	script += "	function hideApproveButton()";
+
+	if (onhold === 'T') {
+		script += "	function hideApproveButton()";
+		script += "	{";
+		script += "		var approveButton = document.getElementById(\"tbl_approve\");";
+		script += "		if(approveButton)";
+		script += "		{";
+		script += "			approveButton.parentNode.style.display = \"none\";";
+		script += "		}";
+		script += "		else";
+		script += "		{";
+		script += "			window.setTimeout(\"hideApproveButton()\", 50);";
+		script += "		}";
+		script += "	}";
+		script += "";
+		script += "	hideApproveButton();";
+		script += "	function hideFulfillButton()";
+		script += "	{";
+		script += "		var fulfillButton = document.getElementById(\"tbl_process\");";
+		script += "		if(fulfillButton)";
+		script += "		{";
+		script += "			fulfillButton.parentNode.style.display = \"none\";";
+		script += "		}";
+		script += "		else";
+		script += "		{";
+		script += "			window.setTimeout(\"hideFulfillButton()\", 50);";
+		script += "		}";
+		script += "	}";
+		script += "";
+		script += "	hideFulfillButton();";
+	}
+	script += "	function hideCloseButton()";
 	script += "	{";
-	script += "		var approveButton = document.getElementById(\"tbl_approve\");";
-	script += "		if(approveButton)";
+	script += "		var closeButton = document.getElementById(\"tbl_closeremaining\");";
+	script += "		if(closeButton)";
 	script += "		{";
-	script += "			approveButton.parentNode.style.display = \"none\";";
+	script += "			closeButton.parentNode.style.display = \"none\";";
 	script += "		}";
 	script += "		else";
 	script += "		{";
-	script += "			window.setTimeout(\"hideApproveButton()\", 50);";
+	script += "			window.setTimeout(\"hideCloseButton()\", 50);";
 	script += "		}";
 	script += "	}";
 	script += "";
-	script += "	hideApproveButton();";
+	script += "	hideCloseButton();";
 	script += "</script>";
 	return script;
 }
